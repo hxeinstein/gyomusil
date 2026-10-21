@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">AI 교무실</string>
-    <string name="widget_name">AI 교무실</string>
-    <string name="widget_desc">Cowork 작업 상태를 교무실 그림으로 보여줘요</string>
-</resources>
