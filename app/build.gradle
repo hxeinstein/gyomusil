@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+def runNo = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+def keyFile = System.getenv('SIGNING_KEYSTORE_FILE')
+
+android {
+    namespace 'com.aioffice.school'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.aioffice.school"
+        minSdk 26
+        targetSdk 34
+        versionCode runNo                 // 빌드할 때마다 1씩 올라가요
+        versionName "1.0.${runNo}"
+        buildConfigField "String", "DRIVE_API_KEY", "\"${System.getenv('DRIVE_API_KEY') ?: ''}\""
+    }
+
+    // 고정 서명 열쇠: GitHub 비밀 설정에 있으면 그걸로 서명해요 (덮어쓰기 업데이트 가능)
+    signingConfigs {
+        shared {
+            if (keyFile) {
+                storeFile file(keyFile)
+                storePassword System.getenv('SIGNING_PASSWORD')
+                keyAlias 'gyomusil'
+                keyPassword System.getenv('SIGNING_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (keyFile) signingConfig signingConfigs.shared
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.work:work-runtime:2.9.1'
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
+}

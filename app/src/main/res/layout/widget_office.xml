@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:padding="4dp">
+
+    <ImageView
+        android:id="@+id/office"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/widget_name" />
+
+    <!-- 층별로 누르는 칸: 위에서부터. 층이 적으면 위쪽 칸을 숨겨요 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+        <FrameLayout android:id="@+id/zone1" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="126" />
+        <FrameLayout android:id="@+id/zone2" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="126" />
+        <FrameLayout android:id="@+id/zone3" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="126" />
+        <FrameLayout android:id="@+id/zone4" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="126" />
+        <FrameLayout android:id="@+id/zone5" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="168" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/refresh"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="6dp"
+        android:background="@drawable/pill_bg"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp"
+        android:text="↻"
+        android:textColor="#2B3340"
+        android:textSize="11sp" />
+</FrameLayout>
