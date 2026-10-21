@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI 교무실</title>
+<!-- 말풍선: 갈무리 / 이름표·글자: Neo둥근모 (둘 다 SIL OFL 무료 폰트) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/neodgm/neodgm-webfont@1.600/neodgm/style.css">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#F1F2F4; --ink:#2B3340; --sub:#5F6B7A; --panel:#FFFFFF; --edge:#C3CAD4; --on:#34495E; --onInk:#FFFFFF;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){color-scheme:dark;--bg:#1C2128;--ink:#E8ECF1;--sub:#A5AFBC;--panel:#262D36;--edge:#3E4856}
+}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#1C2128;--ink:#E8ECF1;--sub:#A5AFBC;--panel:#262D36;--edge:#3E4856}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"NeoDunggeunmo","Malgun Gothic","Apple SD Gothic Neo",monospace}
+.wrap{max-width:460px;margin:0 auto;padding:10px 10px 24px}
+header{display:flex;align-items:baseline;justify-content:space-between;padding:2px 4px 8px}
+h1{font-size:1.2rem;font-weight:400;margin:0}
+.mode{font-size:.72rem;background:var(--on);color:var(--onInk);padding:2px 8px;margin-left:6px;vertical-align:middle;border-radius:8px}
+.clock{color:var(--sub);font-size:.9rem}
+canvas{display:block;width:100%;height:auto;image-rendering:pixelated;border-radius:14px;border:3px solid var(--edge);background:#E4E7EC}
+.panel{background:var(--panel);border:2px solid var(--edge);border-radius:14px;padding:10px 12px;margin-top:10px}
+.panel h2{font-size:.95rem;font-weight:400;margin:0 0 4px;color:var(--sub)}
+.grp{margin:8px 0 10px}
+.grp b{display:block;font-weight:400;margin-bottom:4px}
+.row{display:flex;flex-wrap:wrap;gap:5px;margin:4px 0}
+.row button{font:inherit;font-size:.8rem;border:2px solid var(--edge);background:var(--bg);color:var(--ink);padding:4px 7px;border-radius:9px;cursor:pointer}
+.row button[aria-pressed="true"]{background:var(--on);color:var(--onInk);border-color:var(--on)}
+.row button:focus-visible{outline:2px solid var(--on);outline-offset:2px}
+#list{list-style:none;margin:0;padding:0}#list li{padding:6px 0;border-bottom:1px dashed var(--edge);font-size:.9rem;line-height:1.5}#list li:last-child{border-bottom:0}#list small{color:var(--sub)}
+.note{font-size:.8rem;color:var(--sub);line-height:1.6;margin:6px 0 0}
+/* 위젯 모드: 그림만 화면에 꽉 차게 */
+.widget body{background:transparent}
+.widget .wrap{max-width:none;padding:0;height:100vh;display:flex;align-items:center;justify-content:center}
+.widget header,.widget .panel{display:none}
+.widget canvas{border:0;border-radius:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="ttl">AI 교무실<span class="mode" id="mode">연결 중</span></h1>
+    <span class="clock" id="clock"></span>
+  </header>
+  <canvas id="cv" aria-label="3층 콘텐츠사업부, 2층 경영지원부, 1층 교육사업부가 일하는 사무실"></canvas>
+  <div class="panel">
+    <h2>층별 상황</h2>
+    <ul id="list"></ul>
+    <p class="note" id="msg">상태를 불러오는 중이에요…</p>
+  </div>
+</div>
+</div>
+
+<script>
+const CFG = /*__CONFIG__*/null || {title:"AI 교무실", floors:[{theme:"t3",name:"3F 업무지원부"},{theme:"t2",name:"2F 학급경영부"},{theme:"t1",name:"1F 교과연구부"}]};
+const VIEW = "", KEY = "";
+const OFFICE = CFG.floors;                           // 위층부터 [{theme, name}]
+document.title = CFG.title;
+addEventListener("DOMContentLoaded", () => { const h = document.getElementById("ttl"); if (h && h.firstChild) h.firstChild.textContent = CFG.title; });
+if (VIEW === "widget") document.documentElement.classList.add("widget");
+/* ===== 화면 ===== */
+const LW = 236, LH = 39 + 126 * (OFFICE.length - 1) + 129;
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const lo = document.createElement("canvas"); lo.width = LW; lo.height = LH;
+const g = lo.getContext("2d");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const FONT = '"NeoDunggeunmo","Malgun Gothic","Apple SD Gothic Neo",monospace';     // 이름표
+const TALK = '"Galmuri11","Galmuri9","Malgun Gothic","Apple SD Gothic Neo",sans-serif';  // 캐릭터 말풍선
+let K = 4;
+function resize(){ K = Math.max(2, Math.round(2*(window.devicePixelRatio||1))); cv.width = LW*K; cv.height = LH*K; }
+resize(); addEventListener("resize", resize);
+if (VIEW === "widget") cv.style.width = `min(100vw, calc(100vh * ${LW} / ${LH}))`;
+
+const OX = 93;
+let OY = 44;                                   // 층마다 바뀜
+const P = (x,y,z) => [OX + (x - z)*10, OY + (x + z)*5 - y*10];
+const R = (x,y,w,h,c) => { g.fillStyle = c; g.fillRect(Math.round(x),Math.round(y),w,h); };
+function hex(h){ const n = parseInt(h.slice(1),16); return [n>>16,(n>>8)&255,n&255]; }
+function shade(h,k){ const [r,gg,b] = hex(h), f = v => Math.max(0,Math.min(255,Math.round(v*k))); return `rgb(${f(r)},${f(gg)},${f(b)})`; }
+function poly(pts, c){ g.beginPath(); pts.forEach(([x,y],i)=> i ? g.lineTo(x,y) : g.moveTo(x,y)); g.closePath(); g.fillStyle = c; g.fill(); }
+function box(x0,x1,y0,y1,z0,z1,c){
+  poly([P(x0,y1,z0),P(x1,y1,z0),P(x1,y1,z1),P(x0,y1,z1)], shade(c,1.08));
+  poly([P(x0,y0,z1),P(x1,y0,z1),P(x1,y1,z1),P(x0,y1,z1)], shade(c,.93));
+  poly([P(x1,y0,z0),P(x1,y0,z1),P(x1,y1,z1),P(x1,y1,z0)], shade(c,.78));
+}
+const onZ = (z,x0,x1,y0,y1,c) => poly([P(x0,y0,z),P(x1,y0,z),P(x1,y1,z),P(x0,y1,z)], c);
+const onX = (x,z0,z1,y0,y1,c) => poly([P(x,y0,z0),P(x,y0,z1),P(x,y1,z1),P(x,y1,z0)], c);
+const onY = (y,x0,x1,z0,z1,c) => poly([P(x0,y,z0),P(x1,y,z0),P(x1,y,z1),P(x0,y,z1)], c);
+
+/* ===== 미니 인형 (16×20, 앞모습) ===== */
+const BODY = [
+"....oooooooo....",
+"..oohhhhhhhhoo..",
+".ohhhhhhhhhhhho.",
+".ohhHHhhhhhhhho.",
+"ohhhhhhhhhhhhhho",
+"ohhsssshhsssshho",
+"ohssssssssssssho",
+"ohsseesssseessho",
+"ohsseesssseessho",
+".osrrssssssrrso.",
+".osssssmmssssso.",
+"..osssssssssso..",
+"...oooossoooo...",
+"..ocWWcTTcWWco..",
+".oCccccTTccccCo.",
+".oCccccTTccccCo.",
+".osLLLLLLLLLLso.",
+"..oppppppppppo..",
+"..oppppooppppo..",
+"..obbbo..obbbo.."];
+const LEG_A = "..obbbo...oo....", LEG_B = "....oo...obbbo..";
+const UP = [".occcccTTcccccо.".replace("о","o"),".occcccTTccccco.",".oLLLLLLLLLLLLo."];
+
+function drawDoll(m, sx, sy, o){
+  // o: {grey, closed, arms:"up", walk:0|1, sit, prop, t}
+  const grey = o.grey, G = c => grey ? "#A9A3B5" : c;
+  const pal = { o:"#3A2433", h:G(m.hair), H:G(shade(m.hair,1.35)), s:G("#FBD5B8"), e:"#3A2433", r:G("#FF9FB4"),
+                m:G("#E0607E"), w:"#FFFFFF", c:G(m.shirt), C:G(shade(m.shirt,.86)), p:G(m.pants||"#3D4566"), b:"#2A2026",
+                W:G(m.shirt === "#FFFFFF" ? "#E3E7F0" : "#FFFFFF"), T:G(m.tie || shade(m.shirt,.9)), L:"#2E2430" };
+  const x = Math.round(sx) - 8, y = Math.round(sy) - 20 + (o.sit ? 3 : 0);
+  let rows = BODY.slice();
+  if (o.closed){ rows[7] = "ohssssssssssssho"; }
+  if (o.arms === "up") rows.splice(14,3,...UP);
+  if (o.walk === 1) rows[19] = LEG_A; else if (o.walk === 2) rows[19] = LEG_B;
+  const n = o.sit ? 17 : 20;
+  for (let r=0;r<n;r++) for (let c=0;c<16;c++){ const k = rows[r][c]; if (k !== "." && pal[k]) R(x+c,y+r,1,1,pal[k]); }
+  if (!grey && !o.closed){ R(x+5,y+7,1,1,"#FFFFFF"); R(x+11,y+7,1,1,"#FFFFFF"); }
+  // 머리 장식
+  const acc = m.acc;
+  if (acc === "ribbon"){ R(x+11,y-1,5,3,"#3A2433"); R(x+12,y,1,1,G("#FF7FAF")); R(x+14,y,1,1,G("#FF7FAF")); R(x+13,y,1,1,G("#E0457F")); }
+  if (acc === "tuft"){ R(x+6,y-2,2,2,"#3A2433"); R(x+7,y-3,2,2,"#3A2433"); }
+  if (acc === "buns"){ [x+1,x+11].forEach(bx => { R(bx,y-2,4,4,"#3A2433"); R(bx+1,y-1,2,2,pal.h); }); }
+  if (acc === "cap"){ R(x+2,y-1,12,5,"#3A2433"); R(x+3,y,10,3,G(m.cap)); R(x+1,y+3,8,2,"#3A2433"); R(x+2,y+3,6,1,G(shade(m.cap,.8))); R(x+7,y,2,1,"#FFFFFF"); }
+  if (acc === "glasses"){ R(x+3,y+6,4,1,"#3A2433"); R(x+9,y+6,4,1,"#3A2433"); R(x+3,y+6,1,3,"#3A2433"); R(x+6,y+6,1,3,"#3A2433"); R(x+9,y+6,1,3,"#3A2433"); R(x+12,y+6,1,3,"#3A2433"); R(x+7,y+7,2,1,"#3A2433"); }
+  if (acc === "headset"){ R(x+3,y-1,10,1,"#3A2433"); R(x+1,y+4,2,5,"#3A2433"); R(x+13,y+4,2,5,"#3A2433"); R(x+13,y+9,1,2,"#3A2433"); R(x+12,y+10,2,1,"#3A2433"); }
+  if (acc === "lanyard"){ R(x+6,y+13,1,2,"#4FA3F7"); R(x+9,y+13,1,2,"#4FA3F7"); R(x+6,y+15,4,3,"#3A2433"); R(x+7,y+16,2,1,"#FFFFFF"); }
+  if (acc === "flower"){ R(x+1,y+1,3,3,G("#FFD34D")); R(x+2,y+2,1,1,G("#FF8A3D")); }
+  if (o.arms === "up"){ const w = o.wave||0; [[-1],[15]].forEach(([dx]) => { R(x+dx,y+8-w,2,7,"#3A2433"); R(x+dx,y+9-w,2,5,pal.C); R(x+dx,y+6-w,2,3,pal.s); }); }
+  // 들고 있는 것
+  const t = o.t || 0;
+  if (o.prop === "book"){ R(x+3,y+13,10,5,"#3A2433"); R(x+4,y+14,4,3,"#FFFFFF"); R(x+8,y+14,4,3,"#FFF2C9"); if (!reduce && Math.floor(t*2)%2) R(x+8,y+14,2,3,"#E8DDB8"); }
+  if (o.prop === "lens"){ const b = reduce ? 0 : Math.round(Math.sin(t*3)*1.5); R(x+12+b,y+9,5,5,"#3A2433"); R(x+13+b,y+10,3,3,"#BFE8FF"); R(x+11+b,y+14,2,2,"#8A5A2B"); }
+  if (o.prop === "tablet"){ R(x+3,y+13,10,6,"#3A2433"); R(x+4,y+14,8,4,"#1E3A2E"); const f = reduce ? 0 : Math.floor(t*6)%3; for (let i=0;i<3;i++) if (i<=f) R(x+5,y+14+i,2+i*2,1,"#7CFFB0"); }
+  if (o.prop === "pointer"){ R(x-5,y+12,6,1,"#8A5A2B"); R(x-6,y+11,2,2,"#E05A4F"); }
+  if (o.prop === "paper"){ R(x+3,y+12,10,8,"#3A2433"); R(x+4,y+13,8,6,"#FFFFFF"); R(x+5,y+14,5,1,"#B9C2DB"); R(x+5,y+16,4,1,"#B9C2DB"); R(x+9,y+16,2,2,"#E05A4F"); }
+  if (o.prop === "mug"){ R(x+12,y+14,4,4,"#3A2433"); R(x+13,y+15,2,2,"#FFFFFF"); }
+}
+
+/* ===== 팀 구성 ===== */
+const ROLES = ["leader","read","write","run","search"];
+const ACT_SAY = {read:"자료 읽는 중", write:"작성 중", run:"실행 중", search:"검색 중", plan:"계획 세우는 중"};
+// 책상 2줄 × 3칸
+const HOME = {leader:[0.8,3.4], read:[2.8,1.6], write:[5.8,1.6], run:[8.8,1.6], search:[5.8,4.6]};
+const DECOR = [[2.8,4.6],[8.8,4.6]];
+const DESKS = ["read","run","write","search"].map(r => [r, HOME[r][0]-.7, HOME[r][0]+.7, HOME[r][1]+.4, HOME[r][1]+1.0]);
+// 자유 시간에 갈 곳
+const COFFEE = [[11.9,3.5],[11.9,4.35]], NAP = [[11.1,5.85],[12.7,5.85]], TOILET = [0.45,8.2];
+const CHAT = [[[6.6,7.7],[7.4,6.9]], [[3.9,3.45],[4.7,2.65]]];
+const CHAT_LINES = [["수행평가 채점 다 하셨어요?","아직이요…"],["오늘 급식 뭐예요?","돈가스래요!"],["방학까지 며칠 남았죠?","세지 마세요…"],["공문 또 왔어요","못 본 걸로 할게요"],["회의 몇 시예요?","4시 반이요"]];
+// 층 전체가 자유 시간일 때만 나오는 말풍선
+const FREE_SAY = {
+  coffee: ["믹스커피 한 잔 ☕","카페인 충전 중","아아 없으면 못 살아"],
+  surf:   ["연수 신청 중","택배 어디쯤 왔나","주말 날씨 확인 중"],
+  toilet: ["잠깐 다녀올게요","급똥!","화캉스요~"],
+  nap:    ["5분만…"]
+};
+const SURF_DESK = r => r === "leader" ? DECOR[0] : HOME[r];
+const FREE_W = {surf:3, coffee:2, chat:2.2, toilet:1, nap:1.4};
+const WAIT = [0.9,6.8], ELEV = [6.15,0.55];
+
+const FLOORS = {
+  t1:{ name:"", oy:39, wall:"#E6E3DE", wall2:"#DAD6CF", trim:"#8C8A86", tileA:"#C9C6C1", tileB:"#BFBCB6", line:"#B2AEA8",
+    rug:"#5A6B7D", rug2:"#6E7F91", sofa:"#4A5568", sofa2:"#414B5C", sofa3:"#384150", chair:"#4A5568",
+    team:{ leader:{hair:"#2E2622", shirt:"#2F3540", tie:"#7A2E3E", pants:"#2A2F38", acc:"glasses"},
+           read:  {hair:"#4A3A30", shirt:"#2E3A52", tie:"#5F6B7A", pants:"#262C38", acc:"lanyard"},
+           write: {hair:"#2A2220", shirt:"#4A4F58", tie:"#2E3A52", pants:"#2E333B", acc:"none"},
+           run:   {hair:"#2E2622", shirt:"#3B4250", tie:"#1E2228", pants:"#2A2F38", acc:"headset"},
+           search:{hair:"#3A2E28", shirt:"#555B66", tie:"#6B3A3A", pants:"#30353E", acc:"glasses"} } },
+  t2:{ name:"", oy:39, wall:"#E3E7EC", wall2:"#D6DCE3", trim:"#6B7C93", tileA:"#C3CBD6", tileB:"#B8C1CE", line:"#A8B2C0",
+    rug:"#7A8B6F", rug2:"#8E9E83", sofa:"#3E5068", sofa2:"#37475D", sofa3:"#303E52", chair:"#3E5068",
+    team:{ leader:{hair:"#1F1C1A", shirt:"#2F3540", tie:"#7A2E3E", pants:"#2A2F38", acc:"glasses"},
+           read:  {hair:"#5A4636", shirt:"#2E3A52", tie:"#5F6B7A", pants:"#262C38", acc:"lanyard"},
+           write: {hair:"#2A2220", shirt:"#4A4F58", tie:"#2E3A52", pants:"#2E333B", acc:"none"},
+           run:   {hair:"#1F1C1A", shirt:"#3B4250", tie:"#1E2228", pants:"#2A2F38", acc:"headset"},
+           search:{hair:"#3A2E28", shirt:"#555B66", tie:"#6B3A3A", pants:"#30353E", acc:"glasses"} } },
+  t3:{ name:"", oy:39, wall:"#E1E4E8", wall2:"#D3D7DD", trim:"#5E6672", tileA:"#B9BEC6", tileB:"#AEB4BD", line:"#9EA5AF",
+    rug:"#8A6E5A", rug2:"#9C806B", sofa:"#5A4A42", sofa2:"#51423B", sofa3:"#473A34", chair:"#5A4A42",
+    team:{ leader:{hair:"#3A2E28", shirt:"#2F3540", tie:"#7A2E3E", pants:"#2A2F38", acc:"glasses"},
+           read:  {hair:"#26211E", shirt:"#2E3A52", tie:"#5F6B7A", pants:"#262C38", acc:"lanyard"},
+           write: {hair:"#2A2220", shirt:"#4A4F58", tie:"#2E3A52", pants:"#2E333B", acc:"none"},
+           run:   {hair:"#3A2E28", shirt:"#3B4250", tie:"#1E2228", pants:"#2A2F38", acc:"headset"},
+           search:{hair:"#3A2E28", shirt:"#555B66", tie:"#6B3A3A", pants:"#30353E", acc:"glasses"} } },
+  t4:{ name:"", oy:39, wall:"#E2E6E1", wall2:"#D5DAD3", trim:"#6E7D70", tileA:"#C2CBC0", tileB:"#B7C1B5", line:"#A6B0A4",
+    rug:"#5D6E86", rug2:"#71829A", sofa:"#44584A", sofa2:"#3D4F42", sofa3:"#36463A", chair:"#44584A",
+    team:{ leader:{hair:"#2A2420", shirt:"#2F3540", tie:"#7A2E3E", pants:"#2A2F38", acc:"glasses"},
+           read:  {hair:"#4E3E34", shirt:"#2E3A52", tie:"#5F6B7A", pants:"#262C38", acc:"lanyard"},
+           write: {hair:"#2A2220", shirt:"#4A4F58", tie:"#2E3A52", pants:"#2E333B", acc:"none"},
+           run:   {hair:"#2A2420", shirt:"#3B4250", tie:"#1E2228", pants:"#2A2F38", acc:"headset"},
+           search:{hair:"#3A2E28", shirt:"#555B66", tie:"#6B3A3A", pants:"#30353E", acc:"glasses"} } },
+  t5:{ name:"", oy:39, wall:"#E8E2D8", wall2:"#DCD5CA", trim:"#8A7F70", tileA:"#CFC6B6", tileB:"#C5BBAA", line:"#B5AB9A",
+    rug:"#6B5A4E", rug2:"#7E6D60", sofa:"#4A3F38", sofa2:"#423832", sofa3:"#3A312C", chair:"#4A3F38",
+    team:{ leader:{hair:"#1F1C1A", shirt:"#2F3540", tie:"#7A2E3E", pants:"#2A2F38", acc:"glasses"},
+           read:  {hair:"#3A2E28", shirt:"#2E3A52", tie:"#5F6B7A", pants:"#262C38", acc:"lanyard"},
+           write: {hair:"#2A2220", shirt:"#4A4F58", tie:"#2E3A52", pants:"#2E333B", acc:"none"},
+           run:   {hair:"#1F1C1A", shirt:"#3B4250", tie:"#1E2228", pants:"#2A2F38", acc:"headset"},
+           search:{hair:"#3A2E28", shirt:"#555B66", tie:"#6B3A3A", pants:"#30353E", acc:"glasses"} } }
+};
+const FLOOR_KEYS = OFFICE.map(f => f.theme);
+OFFICE.forEach((f, i) => { FLOORS[f.theme].name = f.name; FLOORS[f.theme].oy = 39 + 126 * i; });
+const HELPER = {hair:"#4A3A30", shirt:"#6B7280", tie:"#2E3A52", pants:"#3A3F48", acc:"lanyard"};
+
+const STATES = {working:"작업 중", waiting:"질문 대기", approval:"결재 대기", resting:"쉬는 중", done:"작업 끝", unknown:"확인 중"};
+const ACTS = {read:"자료 읽기", write:"작성", run:"실행", search:"검색", plan:"계획"};
+const LAMP = {working:"#5BD69A", waiting:"#FFC93C", approval:"#FF9A55", resting:"#B9B2C8", done:"#FF7FC4", unknown:"#8D8799"};
+
+const world = {};
+for (const f of FLOOR_KEYS){
+  world[f] = {state:"working", act:"write", helpers:0, people:{}, helperList:[]};
+  for (const r of ROLES) world[f].people[r] = {x:HOME[r][0], z:HOME[r][1], to:null};
+}
+
+/* ===== 걷기 ===== */
+function walkTo(p, x, z){
+  if (Math.hypot(x-p.x, z-p.z) < .05){ p.to = null; return; }
+  p.from = [p.x,p.z]; p.to = [x,z]; p.t0 = performance.now()/1000; p.dur = Math.max(.5, Math.hypot(x-p.x,z-p.z)/2.6);
+}
+function stepWalk(p, t){
+  if (!p.to) return;
+  const k = Math.min(1,(t-p.t0)/p.dur);
+  p.x = p.from[0] + (p.to[0]-p.from[0])*k; p.z = p.from[1] + (p.to[1]-p.from[1])*k;
+  if (k >= 1){ p.to = null; if (p.onArrive){ const f = p.onArrive; p.onArrive = null; f(); } }
+}
+function targetFor(f, role){
+  const w = world[f];
+  if ((w.state === "waiting" || w.state === "approval") && role === "leader") return WAIT;
+  return HOME[role];
+}
+function helperSpot(f, i){
+  const a = world[f].act;
+  if (a === "plan") return [[1.8,2.6],[1.8,4.4]][i];
+  const [cx,cz] = HOME[a];
+  return i === 0 ? [cx+1.1, cz+.1] : [cx, cz < 3 ? 3.05 : 6.3];
+}
+/* ===== 자유 시간 ===== */
+function eligible(f, r){
+  const w = world[f], st = w.state;
+  if (st === "unknown" || st === "done") return false;
+  if ((st === "waiting" || st === "approval") && r === "leader") return false;
+  if (st === "working" && ((w.act === "plan" && r === "leader") || w.act === r)) return false;
+  return true;
+}
+function pick(wts){ let sum = 0; for (const k in wts) sum += wts[k]; let x = Math.random()*sum; for (const k in wts){ x -= wts[k]; if (x <= 0) return k; } return "surf"; }
+function busy(p){ return p.task && (p.task.type === "chat" || p.task.type === "toilet"); }
+function newTask(f, r, t){
+  const w = world[f], p = w.people[r];
+  let type = pick(FREE_W);
+  if (type === "chat"){
+    const others = ROLES.filter(o => o !== r && eligible(f,o) && !busy(w.people[o]));
+    const si = CHAT.findIndex((c,i) => !ROLES.some(o => w.people[o].task && w.people[o].task.type === "chat" && w.people[o].task.spot === i));
+    if (others.length && si >= 0){
+      const o = others[Math.floor(Math.random()*others.length)], q = w.people[o];
+      walkTo(p, ...CHAT[si][0]); walkTo(q, ...CHAT[si][1]);
+      const until = t + Math.max(p.dur||0, q.dur||0) + 7 + Math.random()*3, lines = Math.floor(Math.random()*CHAT_LINES.length);
+      p.task = {type:"chat", until, spot:si, side:0, lines}; q.task = {type:"chat", until, spot:si, side:1, lines}; q.hidden = false;
+      return;
+    }
+    type = "surf";
+  }
+  if (type === "toilet" && ROLES.some(o => w.people[o].task && w.people[o].task.type === "toilet")) type = "coffee";
+  let dest, dwell;
+  if (type === "surf"){ dest = SURF_DESK(r); dwell = 8 + Math.random()*6; }
+  if (type === "coffee"){ dest = COFFEE[ROLES.some(o => w.people[o].task && w.people[o].task.type === "coffee" && w.people[o].task.dest === COFFEE[0]) ? 1 : 0]; dwell = 5; }
+  if (type === "toilet"){ dest = TOILET; dwell = 4; }
+  if (type === "nap"){ const used = ROLES.filter(o => w.people[o].task && w.people[o].task.type === "nap").map(o => w.people[o].task.dest); dest = NAP.find(n => !used.includes(n)); if (!dest){ dest = SURF_DESK(r); type = "surf"; } dwell = 9; }
+  walkTo(p, ...dest);
+  p.task = {type, dest, until: t + (p.to ? p.dur : 0) + dwell};
+  if (type === "toilet") p.task.say = ["화장실~","급똥!","화캉스 갔다올게요"][Math.floor(Math.random()*3)];
+}
+function think(f, t){
+  const w = world[f];
+  for (const r of ROLES){
+    const p = w.people[r];
+    if (!eligible(f,r)) continue;
+    if (p.task){
+      if (!p.to && p.task.arrived === undefined) p.task.arrived = t;
+      if (p.task.type === "toilet") p.hidden = !p.to && t < p.task.until;
+      if (t < p.task.until) continue;
+      p.hidden = false; p.task = null; p.nextAt = t + .4 + Math.random()*1.5;
+    }
+    if (p.nextAt && t < p.nextAt) continue;
+    newTask(f, r, t);
+  }
+}
+function refresh(f){
+  const w = world[f];
+  for (const r of ROLES){
+    const p = w.people[r];
+    if (eligible(f,r) && p.task) continue;
+    p.task = null; p.hidden = false;
+    if (eligible(f,r) && !p.nextAt) p.nextAt = performance.now()/1000 + Math.random()*3;
+    const [x,z] = targetFor(f,r); walkTo(p, x, z);
+  }
+  const want = (w.state === "working") ? w.helpers : 0;
+  while (w.helperList.filter(h=>!h.leaving).length < want){
+    const i = w.helperList.filter(h=>!h.leaving).length;
+    const h = {x:ELEV[0], z:ELEV[1], to:null, born:performance.now()/1000};
+    w.helperList.push(h); walkTo(h, ...helperSpot(f,i));
+  }
+  w.helperList.filter(h=>!h.leaving).slice(want).forEach(h => { h.leaving = true; walkTo(h, ...ELEV); h.onArrive = () => { w.helperList = w.helperList.filter(x=>x!==h); }; });
+  w.helperList.filter(h=>!h.leaving).forEach((h,i) => walkTo(h, ...helperSpot(f,i)));
+}
+
+/* ===== 머리 위 아이콘 (도트) ===== */
+function drawIcon(kind, cx, by, t){
+  const x = Math.round(cx) - 5, y = Math.round(by) - 9 - (reduce ? 0 : Math.floor(t*2)%2);
+  R(x-1,y-1,12,11,"#8C82A8"); R(x,y,10,9,"#FFFFFF");
+  if (kind === "coffee"){ R(x+2,y+3,5,5,"#8A5A3B"); R(x+3,y+4,3,3,"#C98E5E"); R(x+7,y+4,1,3,"#8A5A3B"); R(x+3,y+1,1,1,"#C9CED9"); R(x+5,y+1,1,1,"#C9CED9"); }
+  if (kind === "web"){ R(x+3,y+1,4,1,"#4F8FE0"); R(x+2,y+2,6,5,"#4F8FE0"); R(x+3,y+7,4,1,"#4F8FE0"); R(x+3,y+3,2,2,"#5BBF73"); R(x+5,y+5,2,1,"#5BBF73"); }
+  if (kind === "chat"){ R(x+1,y+2,8,4,"#FF8FB8"); R(x+2,y+6,2,1,"#FF8FB8"); R(x+2,y+3,1,1,"#FFFFFF"); R(x+4,y+3,1,1,"#FFFFFF"); R(x+6,y+3,1,1,"#FFFFFF"); }
+  if (kind === "toilet"){ R(x+2,y+1,6,7,"#7FB8F0"); R(x+4,y+2,2,2,"#FFFFFF"); R(x+3,y+4,4,2,"#FFFFFF"); R(x+3,y+6,1,1,"#FFFFFF"); R(x+6,y+6,1,1,"#FFFFFF"); }
+  R(cx-1,y+9,3,1,"#8C82A8"); R(cx,y+10,1,1,"#8C82A8");
+}
+
+/* ===== 방 그리기 ===== */
+const bubbles = [], labels = [];
+function room(f, t){
+  const fl = FLOORS[f], w = world[f], st = w.state, act = w.act;
+  OY = fl.oy;
+  // 바닥판·타일
+  box(-.3,14,-.5,0,-.3,9,"#9AA6C9");
+  for (let i=0;i<14;i++) for (let j=0;j<9;j++) onY(.001,i,i+1,j,j+1,(i+j)%2 ? fl.tileA : fl.tileB);
+  g.strokeStyle = fl.line; g.lineWidth = .5;
+  for (let i=1;i<14;i++){ const a=P(i,.002,0), b=P(i,.002,9); g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke(); }
+  for (let j=1;j<9;j++){ const a=P(0,.002,j), b=P(14,.002,j); g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke(); }
+  onY(.003,10.2,13.9,5.1,8.9,fl.rug); onY(.004,10.4,13.7,5.3,8.7,fl.rug2);
+  // 벽
+  box(-.3,14,0,3.4,-.3,0,fl.wall);
+  box(-.3,0,0,3.4,0,9,fl.wall2);
+  onZ(.002,-.3,14,0,.28,fl.trim); onX(.002,0,9,0,.28,fl.trim);
+  // 창문 두 개
+  [[.6,2.2],[2.6,4.2],[8.0,9.6],[13.0,13.9]].forEach(([a,b]) => { onZ(.003,a,b,1.3,2.95,"#FFFFFF"); onZ(.004,a+.1,b-.1,1.4,2.85,"#A9DDF7"); onZ(.005,(a+b)/2-.04,(a+b)/2+.04,1.4,2.85,"#FFFFFF"); onZ(.005,a+.15,a+.5,2.5,2.7,"#E2F5FF"); });
+  { const [cx,cy] = P(4.8,2.5,.01); R(cx-3,cy-3,6,6,"#3A2433"); R(cx-2,cy-2,4,4,"#FFFFFF"); R(cx,cy-2,1,2,"#3A2433"); R(cx,cy,2,1,"#E05A4F"); }
+  // 엘리베이터
+  onZ(.003,5.4,6.9,0,2.45,"#9AA3BE"); onZ(.004,5.5,6.12,0,2.3,"#D9DEEA"); onZ(.004,6.18,6.8,0,2.3,"#D9DEEA");
+  onZ(.004,5.9,6.4,2.55,2.85,"#3A2433");
+  { const [lx,ly] = P(6.15,2.7,.01); R(lx-1,ly-1,3,2,LAMP[st]); }
+  // 화이트보드
+  onX(.003,2.4,4.5,1.1,2.6,"#9AA3BE"); onX(.004,2.5,4.4,1.2,2.5,"#FFFFFF");
+  onX(.005,2.7,3.5,2.2,2.3,"#FF8FB8"); onX(.005,2.7,4.1,1.92,2.02,"#7FB8F0"); onX(.005,2.7,3.7,1.64,1.74,"#9ED36A");
+  // 교무실 문
+  onX(.003,6.0,7.5,0,2.5,"#8A5A3B"); onX(.004,6.1,7.4,0,2.38,"#B57A4E"); onX(.005,6.2,7.3,1.3,2.25,"#C98E5E"); onX(.005,6.2,7.3,.15,1.15,"#C98E5E");
+  { const [hx,hy] = P(.01,1.2,6.3); R(hx-1,hy-1,2,2,"#FFD34D"); }
+  onX(.004,6.25,7.25,2.62,3.05,"#3A2433");
+  { const [lx,ly] = P(.01,2.84,6.75); labels.push({x:lx,y:ly,t:"교무실",dark:true,slant:-1}); }
+  // 화장실 문
+  onX(.003,7.7,8.75,0,2.3,"#9AA3BE"); onX(.004,7.8,8.65,0,2.2,"#E8ECF4"); { const [hx,hy] = P(.01,1.1,7.95); R(hx-1,hy-1,2,2,"#9AA3BE"); }
+  onX(.004,7.95,8.5,2.42,2.75,"#5FA8E8"); { const [lx,ly] = P(.01,2.58,8.22); labels.push({x:lx,y:ly,t:"WC",dark:true,slant:-1}); }
+
+  const items = [];
+  const F = (x0,x1,y0,y1,z0,z1,c,extra,key) => items.push({k: key ?? ((x0+x1)/2+(z0+z1)/2+y0*.9), d:() => { box(x0,x1,y0,y1,z0,z1,c); extra && extra(); }});
+  // 유리 책장
+  F(0,.55,0,2.4,.3,1.85,"#7F9BD6", () => {
+    const cols = ["#FF8FB8","#FFD34D","#9ED36A","#FF9A55","#C9A4E8","#7FD1E8"];
+    for (let r=0;r<3;r++){ onX(.551,.35,1.8,.15+r*.75,.2+r*.75,"#5A6FA8");
+      for (let i=0;i<5;i++){ const z0 = .42+i*.27; onX(.552,z0,z0+.2,.2+r*.75,.2+r*.75+.4+((i+r)%3)*.07,cols[(i+r)%6]); } }
+  });
+  // 서버
+  for (const sx0 of [10.6,11.7]) F(sx0,sx0+1.0,0,2.4,.1,.8,"#5A5F8A", () => {
+    const on = st === "working" && act === "run";
+    for (let r=0;r<5;r++){ onZ(.801,sx0+.1,sx0+.9,.3+r*.42,.6+r*.42,"#3D4170");
+      const blink = on && !reduce ? (Math.floor(t*8)+r+sx0)%3 : 1;
+      const [a,b] = P(sx0+.25,.45+r*.42,.81); R(a,b,1,1, blink===0 ? "#7CFFB0" : (on ? "#3E9A5B" : "#6E739A"));
+      const [c2,d2] = P(sx0+.45,.45+r*.42,.81); R(c2,d2,1,1, on && blink===1 ? "#FFD34D" : "#6E739A"); }
+  });
+  // 복사기
+  F(12.9,13.9,0,.85,1.6,2.3,"#E3E6EE", () => { onY(.86,13.0,13.8,1.7,2.2,"#C9CED9"); const [a,b] = P(13.9,.6,1.95); R(a-3,b-1,2,1,"#5BD69A"); });
+  F(13.05,13.75,.85,.95,2.25,2.55,"#FFFFFF");
+  // 화분(나무)
+  const tree = (x,z) => F(x-.25,x+.25,0,.45,z-.25,z+.25,"#C98E5E", () => { const [a,b] = P(x,.45,z); R(a,b-12,1,12,"#7A4E2B"); R(a-5,b-17,11,7,"#3E9A5B"); R(a-4,b-20,9,4,"#5BBF73"); R(a-3,b-14,3,2,"#7FD68E"); });
+  tree(7.5,.5); tree(13.5,.6); tree(9.9,8.3);
+  // 커피 머신
+  F(12.6,13.9,0,.9,3.0,4.7,"#B07A4F", () => { const [a,b] = P(12.6,.9,4.3); R(a-1,b-3,2,3,"#FFFFFF"); const [c2,d2] = P(12.6,.9,4.5); R(c2-1,d2-3,2,3,"#FF8FB8"); });
+  F(12.9,13.6,.9,1.7,3.2,3.9,"#4A5378", () => { const [a,b] = P(12.9,1.4,3.55); R(a-1,b,2,1,"#E05A4F"); });
+  // 책상·의자·모니터
+  const allDesks = DESKS.map(d => [...d, HOME[d[0]]]).concat(DECOR.map(([x,z]) => [null, x-.7, x+.7, z+.4, z+1.0, [x,z]]));
+  for (const [role,x0,x1,z0,z1,[cx,cz]] of allDesks){
+    const active = role && st === "working" && act === role;
+    const surfer = ROLES.find(r => { const q = w.people[r]; return q.task && q.task.type === "surf" && !q.to && Math.hypot(q.x-cx, q.z-cz) < .2; });
+    F(cx-.32,cx+.32,.45,1.1,cz-.5,cz-.38,fl.chair, null, cx+cz-.6);                 // 등받이
+    F(cx-.3,cx+.3,.35,.45,cz-.4,cz+.1,fl.chair, null, cx+cz-.5);
+    F(x0,x1,.62,.74,z0,z1,"#F4F1EA");
+    F(x0+.05,x0+.15,0,.62,z0+.05,z1-.05,"#C9CED9"); F(x1-.15,x1-.05,0,.62,z0+.05,z1-.05,"#C9CED9");
+    F(x0+.2,x0+.32,.74,1.28,z0+.08,z0+.55,"#3A3F5C", () => {
+      onX(x0+.321,z0+.12,z0+.51,.8,1.22, active ? "#8FE3FF" : surfer ? "#FFFFFF" : "#5C7AB8");
+      if (surfer){ onX(x0+.322,z0+.12,z0+.51,1.12,1.22,"#FF8FB8"); onX(x0+.322,z0+.15,z0+.3,.85,1.08,(Math.floor(t*.5)%2) ? "#FFD34D" : "#9ED36A"); onX(x0+.322,z0+.33,z0+.48,1.0,1.04,"#B9C2DB"); onX(x0+.322,z0+.33,z0+.48,.9,.94,"#B9C2DB"); }
+      if (active && !reduce){ const k = Math.floor(t*6)%3; for (let i=0;i<3;i++) onX(x0+.322,z0+.18,z0+.25+(i===k?.2:.1),1.12-i*.1,1.15-i*.1,"#FFFFFF"); }
+    });
+    F(cx-.25,cx+.25,.74,.78,z0+.1,z0+.3,"#D9DEEA");
+    F(x1-.35,x1-.2,.74,.9,z1-.3,z1-.15,"#FFFFFF");
+  }
+  // 소파 라운지
+  F(10.5,13.6,0,.45,5.35,5.95,fl.sofa, null, 10.5+5.35);
+  F(10.5,13.6,.45,1.0,5.35,5.52,fl.sofa2, null, 10.5+5.3);
+  F(10.35,10.55,0,.72,5.35,5.95,fl.sofa3, null, 10.35+5.3);
+  F(13.55,13.75,0,.72,5.35,5.95,fl.sofa3, null, 30);
+  F(11.4,12.8,0,.35,6.9,7.5,"#3E5A7A", () => { const [a,b] = P(11.9,.36,7.2); R(a-1,b-2,3,2,"#FFFFFF"); const [c2,d2] = P(12.4,.36,7.25); R(c2-2,d2-3,4,3,"#FF9A55"); });
+
+  // 사람들
+  think(f, t);
+  let freeTalk = 0;                       // 자유 시간 말풍선은 한 층에 동시에 2개까지
+  for (const r of ROLES){
+    const p = w.people[r], m = fl.team[r];
+    stepWalk(p, t);
+    if (p.hidden) continue;
+    const walking = !!p.to, task = p.task, arrived = task && !walking;
+    const desk = SURF_DESK(r), atDesk = Math.hypot(p.x-desk[0], p.z-desk[1]) < .15 && !(r === "leader" && Math.hypot(p.x-HOME.leader[0], p.z-HOME.leader[1]) < .15);
+    const isActive = st === "working" && !walking && ((act === "plan" && r === "leader") || act === r);
+    const o = {t, grey: st === "unknown"};
+    if (walking) o.walk = reduce ? 0 : (Math.floor(t*8)%2 ? 1 : 2);
+    else {
+      o.sit = atDesk || (arrived && task.type === "nap");
+      if (arrived && task.type === "nap") o.closed = true;
+      if (arrived && task.type === "coffee") o.prop = "mug";
+      if (st === "done"){ o.arms = "up"; o.wave = reduce ? 0 : Math.floor(t*6 + ROLES.indexOf(r))%2; }
+      if (isActive) o.prop = {read:"book", search:"lens", run:"tablet", leader:"pointer"}[r];
+      if (st === "approval" && r === "leader") o.prop = "paper";
+      if (!isActive && !o.closed && !reduce && (Math.floor(t*1.3 + ROLES.indexOf(r)*7) % 9 === 0)) o.closed = true;
+    }
+    const bob = (!walking && st === "done" && !reduce) ? (Math.floor(t*6 + ROLES.indexOf(r))%2)*2 : 0;
+    const typing = isActive && r === "write" && !reduce ? Math.floor(t*6)%2 : 0;
+    items.push({k:p.x+p.z+.15, d:() => {
+      const [sx,sy] = P(p.x,0,p.z);
+      drawDoll(m, sx, sy - bob - (walking ? (Math.floor(t*8)%2) : 0) + typing, o);
+      if (isActive && r === "write" && !reduce && Math.floor(t*8)%2){ R(sx-6,sy-14,1,1,"#FFFFFF"); R(sx+6,sy-13,1,1,"#FFFFFF"); }
+    }});
+    const [bx,by] = P(p.x,0,p.z);
+    let say = null, kind = "plain";
+    // 노는 사람: 말풍선 대신 머리 위 아이콘
+    if (task && st === "resting"){
+      // 층 전체가 자유 시간: 아이콘 대신 말풍선 (몇 초씩 돌아가며)
+      const ri = ROLES.indexOf(r), slot = Math.floor((t + ri * 1.7) / 3.5);
+      let line = null;
+      if (task.type === "chat" && arrived){
+        if (Math.floor(t / 2.2) % 2 === task.side) line = CHAT_LINES[(task.lines + Math.floor(t / 4.4)) % CHAT_LINES.length][task.side];
+      } else if (slot % 3 === 0 && (arrived || task.type === "toilet")){
+        const pool = FREE_SAY[task.type];
+        if (pool) line = pool[(Math.floor(t / 10.5) + ri) % pool.length];
+      }
+      if (line && freeTalk < 2){ freeTalk++; bubbles.push({x:bx, y:by - 24 + (o.sit?3:0), t:line, kind:"plain"}); }
+    }
+    else if (task){
+      let icon = null;
+      if (task.type === "toilet") icon = "toilet";
+      else if (arrived && task.type === "coffee") icon = "coffee";
+      else if (arrived && task.type === "surf") icon = "web";
+      else if (arrived && task.type === "chat" && Math.floor(t/1.8) % 2 === task.side) icon = "chat";
+      if (icon){ const hy = by - 25 + (o.sit?3:0); items.push({k:999, d:() => drawIcon(icon, bx, hy, t)}); }
+    }
+    else if (walking && r === "leader") say = "이동 중…";
+    else if (!walking){
+      if (st === "working" && isActive){ say = ACT_SAY[act]; kind = "work"; }
+      if (st === "waiting" && r === "leader") say = "선생님, 질문 있습니다!";
+      if (st === "approval" && r === "leader") say = "선생님, 결재 부탁드립니다!";
+      if (st === "done" && r === "leader") say = "완료했습니다!";
+      if (st === "unknown" && r === "leader") say = "확인 중";
+    }
+    if ((st === "waiting" || st === "approval") && r === "leader" && !task && say) kind = "hot";
+    if (say) bubbles.push({x:bx, y:by - 24 + (o.sit?3:0), t:say, kind});
+    // 일하는 사람: 초록 화살표
+    if (kind === "work"){ const hop = reduce ? 0 : Math.round(Math.abs(Math.sin(t*5))*2); const ay = by - 24 + (o.sit?3:0) - 12 - 6 - hop;
+      items.push({k:1000, d:() => { R(bx-3,ay,7,1,"#2E7D4F"); R(bx-2,ay+1,5,1,"#5BD69A"); R(bx-1,ay+2,3,1,"#5BD69A"); R(bx,ay+3,1,1,"#2E7D4F"); R(bx-3,ay+1,1,1,"#2E7D4F"); R(bx+3,ay+1,1,1,"#2E7D4F"); R(bx-2,ay+2,1,1,"#2E7D4F"); R(bx+2,ay+2,1,1,"#2E7D4F"); R(bx-1,ay+3,1,1,"#2E7D4F"); R(bx+1,ay+3,1,1,"#2E7D4F"); }}); }
+    // 선생님 호출: 빨간 느낌표 깜빡임
+    if (kind === "hot" && (reduce || Math.floor(t*3)%2)){ const ey = by - 24 + (o.sit?3:0) - 12 - 13;
+      items.push({k:1000, d:() => { R(bx-3,ey,7,11,"#7A1E1E"); R(bx-2,ey+1,5,9,"#E8433A"); R(bx-.5,ey+2,2,4,"#FFFFFF"); R(bx-.5,ey+7,2,2,"#FFFFFF"); }}); }
+    if (!walking){
+      if ((st === "waiting" || st === "approval") && r === "leader"){ const k = reduce ? 0 : Math.floor(t*4)%4; items.push({k:999, d:() => { R(bx+7,by-19+k,2,3,"#6EC6F0"); R(bx+7,by-20+k,1,1,"#6EC6F0"); }}); }
+      if (st === "done" && r === "leader"){ items.push({k:999, d:() => { const on = reduce || Math.floor(t*5)%2; const s = (x,y)=>{ R(x,y-1,1,3,"#FFD34D"); R(x-1,y,3,1,"#FFD34D"); }; if (on){ s(bx-12,by-20); s(bx+11,by-18); s(bx,by-30);} else { s(bx-9,by-24); s(bx+9,by-26); } }}); }
+      if (arrived && task.type === "nap" && !reduce){ const k = (t*.7 + ROLES.indexOf(r)*.3)%1; items.push({k:999, d:() => { g.globalAlpha = Math.sin(k*Math.PI); R(bx+6+k*4,by-18-k*6,3,1,"#9A8FB0"); R(bx+8+k*4,by-17-k*6,1,1,"#9A8FB0"); R(bx+6+k*4,by-16-k*6,3,1,"#9A8FB0"); g.globalAlpha = 1; }}); }
+    }
+  }
+  // 도우미
+  w.helperList.forEach(h => {
+    stepWalk(h, t);
+    const walking = !!h.to;
+    const o = {t, grey: st === "unknown", walk: walking ? (reduce ? 0 : (Math.floor(t*8)%2 ? 1 : 2)) : 0};
+    if (!walking && st === "working") o.prop = {read:"book", search:"lens", run:"tablet", write:"tablet", plan:"book"}[act];
+    items.push({k:h.x+h.z+.15, d:() => { const [sx,sy] = P(h.x,0,h.z); drawDoll(HELPER, sx, sy - (walking ? Math.floor(t*8)%2 : 0), o); }});
+    const now = performance.now()/1000, [bx,by] = P(h.x,0,h.z);
+    if (!h.leaving && now - h.born < 2.2) bubbles.push({x:bx, y:by-24, t:"출근합니다!"});
+    if (h.leaving) bubbles.push({x:bx, y:by-24, t:"퇴근합니다!"});
+  });
+
+  items.sort((a,b)=>a.k-b.k).forEach(i => i.d());
+  if (st === "unknown"){ g.fillStyle = "rgba(60,50,80,.28)"; g.fillRect(0, fl.oy-40, LW, 165); }
+  let what = {working: ACT_SAY[act], waiting:"질문 대기", approval:"결재 대기", resting:"자유 시간", done:"작업 끝", unknown:"확인 중"}[st];
+  if ((st === "waiting" || st === "approval") && VIEW !== "widget") what += " · 눌러서 답하기";
+  labels.push({x:6, y:fl.oy-27, t:fl.name, sub:what, floor:true, lamp:LAMP[st], hot: st === "waiting" || st === "approval", t0:t});
+}
+
+/* ===== 매 프레임 ===== */
+function frame(ms){
+  const t = ms/1000;
+  bubbles.length = 0; labels.length = 0;
+  g.setTransform(1,0,0,1,0,0); g.imageSmoothingEnabled = false;
+  const sky = g.createLinearGradient(0,0,0,LH); sky.addColorStop(0,"#DDE2E8"); sky.addColorStop(1,"#EEF0F3");
+  g.fillStyle = sky; g.fillRect(0,0,LW,LH);
+  // 구름 장식
+  g.fillStyle = "#FFFFFF"; [[170,6],[205,26],[205,150],[210,280]].forEach(([x,y]) => { g.fillRect(x,y,14,4); g.fillRect(x+3,y-3,8,3); });
+  for (const f of [...FLOOR_KEYS].reverse()) room(f, t);
+
+  ctx.setTransform(1,0,0,1,0,0); ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(lo, 0, 0, LW*K, LH*K);
+  ctx.setTransform(K,0,0,K,0,0);
+  // 글자(선명하게)
+  for (const l of labels){
+    if (l.floor){
+      ctx.font = `8px ${FONT}`; const tw = ctx.measureText(l.t).width;
+      const sub = " · " + l.sub, sw = ctx.measureText(sub).width;
+      const blink = l.hot && (reduce || Math.floor(l.t0*3)%2);
+      ctx.fillStyle = blink ? "#FFE3CC" : "#FFFFFF"; roundRect(l.x-3, l.y-7, tw+sw+18, 13, 6); ctx.fill();
+      ctx.strokeStyle = l.hot ? (blink ? "#E8433A" : "#FF8A3D") : "#9AA5B4"; ctx.lineWidth = l.hot ? 1.4 : 1; ctx.stroke();
+      ctx.textBaseline = "middle"; ctx.textAlign = "left";
+      ctx.fillStyle = l.lamp; ctx.beginPath(); ctx.arc(l.x+3, l.y, 3, 0, 7); ctx.fill();
+      ctx.fillStyle = "#2B3340"; ctx.fillText(l.t, l.x+9, l.y);
+      ctx.fillStyle = l.hot ? "#D9581F" : "#5F6B7A"; ctx.fillText(sub, l.x+9+tw, l.y);
+    } else {
+      ctx.save(); ctx.translate(l.x, l.y); if (l.slant) ctx.transform(1, -.5, 0, 1, 0, 0);
+      ctx.font = `5px ${FONT}`; ctx.fillStyle = l.dark ? "#FFFFFF" : "#2B3340"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(l.t, 0, 0); ctx.restore();
+    }
+  }
+  for (const b of bubbles){
+    ctx.font = `7px ${TALK}`;
+    const tw = ctx.measureText(b.t).width, w = tw + 10, h = 12;
+    const bx = Math.max(2, Math.min(LW-2-w, b.x - w/2)), by = b.y - h;
+    const bg = b.kind === "work" ? "#FFF3B8" : b.kind === "hot" ? "#FFE3CC" : "#FFFFFF";
+    const line = b.kind === "work" ? "#D9A300" : b.kind === "hot" ? "#E8433A" : "#9AA5B4";
+    ctx.fillStyle = bg; roundRect(bx, by, w, h, 6); ctx.fill();
+    ctx.strokeStyle = line; ctx.lineWidth = b.kind === "plain" ? 1 : 1.4; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b.x-2.5, by+h-.5); ctx.lineTo(b.x, by+h+3); ctx.lineTo(b.x+2.5, by+h-.5); ctx.fillStyle = bg; ctx.fill();
+    ctx.fillStyle = b.kind === "hot" ? "#C2361E" : b.kind === "work" ? "#5A4300" : "#2B3340"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(b.t, bx + w/2, by + h/2 + .3);
+  }
+  requestAnimationFrame(frame);
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+/* ===== 상태 바꾸기 ===== */
+function setFloor(f, patch){
+  Object.assign(world[f], patch);
+  if (!STATES[world[f].state]) world[f].state = "unknown";
+  refresh(f);
+}
+/* ===== 실제 상태 받기 ===== */
+const NAME = {}; OFFICE.forEach(f => NAME[f.theme] = f.name);
+const MIN = 60*1000;
+function ago(ms){ const m = Math.round(ms/MIN); return m < 1 ? "방금" : m < 60 ? m+"분 전" : Math.round(m/60)+"시간 전"; }
+function applyStatus(data){
+  document.getElementById("mode").textContent = "실시간";
+  const list = document.getElementById("list"); list.innerHTML = "";
+  for (const f of FLOOR_KEYS){
+    const d = data && data[f];
+    let state = "resting", act = world[f].act, helpers = 0, info = "기록 없음 · 자유 시간";
+    if (d){
+      const age = Date.now() - new Date(d.updatedAt).getTime();
+      state = STATES[d.state] ? d.state : "working";
+      if (ACTS[d.activity]) act = d.activity;
+      helpers = Math.max(0, Math.min(2, d.helpers|0));
+      if (state === "working" && age > 30*MIN) state = "unknown";      // 오래 조용하면 멈춘 것일 수 있음
+      if (state === "done" && age > 10*MIN) state = "resting";         // 끝나고 시간이 지나면 자유 시간
+      const pc = /_메인/.test(d.source||"") ? " (메인)" : /_서브/.test(d.source||"") ? " (서브)" : "";
+      info = STATES[state] + pc + (d.note ? " · " + d.note : "") + " · " + ago(age);
+    }
+    setFloor(f, {state, act, helpers: state === "working" ? helpers : 0});
+    world[f].link = (d && d.link) || "";
+    const li = document.createElement("li");
+    li.innerHTML = `<b></b><br><small></small>`;
+    li.querySelector("b").textContent = NAME[f];
+    li.querySelector("small").textContent = info;
+    list.appendChild(li);
+  }
+  document.getElementById("msg").textContent = "마지막 확인: " + new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+}
+// 층을 누르면 그 층의 Cowork 작업 열기
+cv.addEventListener("click", ev => {
+  const r = cv.getBoundingClientRect(), y = (ev.clientY - r.top) / r.height * LH;
+  let f = FLOOR_KEYS[0];
+  FLOOR_KEYS.forEach((k, i) => { if (y >= 39 + 126 * i - 40) f = k; });
+  if (window.Android) Android.openFloor(f);
+});
+cv.style.cursor = "pointer";
+
+function poll(){ if (window.Android) Android.ready(); }
+
+function tick(){ document.getElementById("clock").textContent = new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}); }
+tick(); setInterval(tick, 30000);
+
+for (const f of FLOOR_KEYS) setFloor(f, {state:"unknown", helpers:0});
+poll(); setInterval(poll, 20000);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
